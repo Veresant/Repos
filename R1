@@ -1,0 +1,95 @@
+#!/bin/bash
+show_help() {
+    echo "Usage: $0 [options]
+Options:
+  -u, --users            show list of users and their home directories
+  -p, --processes        show list of running processes
+  -h, --help             display this message
+  -l, --log PATH         path redirect output to the log file
+  -e, --errors PATH      path redirecterror output to the error file"
+}
+show_users() {
+    cut -d: -f1,6 /etc/passwd | sort | while IFS=: read -r user dir; do
+        echo "User: $user, Home directory: $dir"
+    done
+}
+show_processes() {
+    ps -e --sort=pid
+}
+LOG_PATH=""
+ERROR_PATH=""
+ACTION=""
+check_access() {
+    local path="$1"
+    if [[ ! -e "$path" ]]; then
+        touch "$path" 2>/dev/null
+        if [[ $? -ne 0 ]]; then
+            echo "Error: Cant create file '$path'" >&2
+            exit 1
+        fi
+    elif [[ ! -w "$path" ]]; then
+        echo "Error: No permission for '$path'" >&2
+        exit 1
+    fi
+}
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -u|--users)
+            ACTION="users"
+            shift
+            ;;
+        -p|--processes)
+            ACTION="processes"
+            shift
+            ;;
+        -h|--help)
+            show_help
+            exit 0
+            ;;
+        -l|--log)
+            if [[ -n "$2" && "$2" != -* ]]; then
+                LOG_PATH="$2"
+                check_access "$LOG_PATH"
+                shift 2
+            else
+                echo "Error: Argument for $1 is missing or invalid" >&2
+                exit 1
+            fi
+            ;;
+        -e|--errors)
+            if [[ -n "$2" && "$2" != -* ]]; then
+                ERROR_PATH="$2"
+                check_access "$ERROR_PATH"
+                shift 2
+            else
+                echo "Error: Argument for $1 is missing" >&2
+                exit 1
+            fi
+            ;;
+        *)
+            echo "Error: Unsupported flag $1" >&2
+            show_help
+            exit 1
+            ;;
+    esac
+done
+if [[ -n "$LOG_PATH" ]]; then
+    exec >>"$LOG_PATH" 2>&1
+fi
+
+if [[ -n "$ERROR_PATH" ]]; then
+    exec 2>>"$ERROR_PATH"
+fi
+case "$ACTION" in
+    users)
+        show_users
+        ;;
+    processes)
+        show_processes
+        ;;
+    *)
+        echo "Error: No action" >&2
+        show_help
+        exit 1
+        ;;
+esac
